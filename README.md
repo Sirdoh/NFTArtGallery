@@ -1,4 +1,3 @@
-```markdown
 # NFTArtGallery - Comprehensive Art Management Smart Contract
 
 **NFTArtGallery** is a cutting-edge Clarity 6.0 smart contract designed to revolutionize art gallery management by leveraging blockchain technology. This contract enables the minting, updating, and secure ownership transfer of digital artwork NFTs, ensuring transparency, efficiency, and immutability. With batch processing capabilities and robust administrative controls, it is ideal for managing both small and large-scale digital art collections.
