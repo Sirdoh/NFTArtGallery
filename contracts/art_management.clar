@@ -178,6 +178,70 @@
       (asserts! (<= batch-size max-art-batch) err-max-batch-size)
       (ok (fold mint-art-batch details-list (list))))))
 
+;; Map to track artwork sale status
+(define-map artwork-sale-status uint bool)
+
+;; Function to list artwork for sale
+(define-public (list-artwork-for-sale (art-id uint))
+    (begin
+        ;; Ensures only artwork owner can list for sale
+        (let ((owner (unwrap! (nft-get-owner? art-token art-id) err-art-not-found)))
+            (asserts! (is-eq tx-sender owner) err-not-art-owner)
+            (map-set artwork-sale-status art-id true)
+            (ok true))))
+
+;; Function to remove artwork from sale
+(define-public (delist-artwork (art-id uint))
+    (begin
+        ;; Ensures only artwork owner can delist
+        (let ((owner (unwrap! (nft-get-owner? art-token art-id) err-art-not-found)))
+            (asserts! (is-eq tx-sender owner) err-not-art-owner)
+            (map-delete artwork-sale-status art-id)
+            (ok true))))
+
+;; Map to store artwork likes
+(define-map artwork-likes uint (list 50 principal))
+
+;; Function to like artwork
+(define-public (like-artwork (art-id uint))
+    (begin
+        ;; Adds user to artwork's like list
+        (let ((current-likes (default-to (list) (map-get? artwork-likes art-id))))
+            (asserts! (< (len current-likes) u50) err-max-batch-size)
+            (map-set artwork-likes art-id (unwrap! (as-max-len? 
+                (append current-likes tx-sender) u50) err-max-batch-size))
+            (ok true))))
+
+;; Map to store artwork reports
+(define-map artwork-reports uint (list 50 principal))
+
+;; Function to report artwork
+(define-public (report-artwork (art-id uint))
+    (begin
+        ;; Adds user to artwork's report list
+        (let ((current-reports (default-to (list) (map-get? artwork-reports art-id))))
+            (asserts! (< (len current-reports) u50) err-max-batch-size)
+            (map-set artwork-reports art-id (unwrap! (as-max-len? 
+                (append current-reports tx-sender) u50) err-max-batch-size))
+            (ok true))))
+
+(define-public (delete-artwork (art-id uint))
+;; Allows admin to delete an artwork from the system
+(begin
+    (asserts! (is-eq tx-sender gallery-admin) err-not-admin)
+    (asserts! (not (is-transferred art-id)) err-art-not-found) ;; Ensure it's not transferred
+    (map-delete art-details art-id) ;; Delete the artwork details
+    (map-delete art-transfers art-id) ;; Remove transfer status
+    (ok true)))
+
+(define-public (reserve-art-id-range (start-id uint) (count uint))
+;; Reserves a range of artwork IDs without minting them
+(begin
+    (asserts! (> count u0) err-invalid-art-details)
+    (asserts! (<= (+ start-id count) (var-get latest-art-id)) err-art-not-found)
+    (var-set latest-art-id (+ start-id count))
+    (ok count)))
+
 ;; Read-Only Functions
 (define-read-only (get-art-details (art-id uint))
     ;; Retrieves the details of a specific artwork by ID
@@ -247,6 +311,53 @@
 (ok (filter is-transferred 
             (generate-art-list start-id count))))
 
+;; Adds UI element to display the history of artwork transfers
+(define-read-only (get-art-history (art-id uint))
+  ;; Retrieves the history of an artwork's ownership transfers
+  (ok (map-get? art-transfers art-id)))
+
+;; Adds UI pagination for displaying artwork details
+(define-read-only (paginate-artworks (start-id uint) (page-size uint))
+  ;; Returns a paginated list of artwork details
+  (ok (generate-art-list start-id page-size)))
+
+;; Adds a UI element for viewing the latest artwork
+(define-read-only (get-latest-artwork)
+  ;; Returns the latest artwork minted
+  (ok (unwrap! (map-get? art-details (var-get latest-art-id)) err-art-not-found)))
+
+;; Refactors artwork listing to optimize storage access
+(define-read-only (optimized-list-artworks (start-id uint) (count uint))
+  ;; Optimizes the list generation for artworks by reducing storage accesses
+  (let ((art-list (generate-art-list start-id count)))
+    (ok (map art-id-response art-list))))
+
+;; Adds an optimized function for viewing the latest batch of artworks
+(define-read-only (get-latest-artworks (batch-size uint))
+  ;; Retrieves the latest batch of artworks based on batch size
+  (ok (generate-art-list (var-get latest-art-id) batch-size)))
+
+;; Function to get artwork likes count
+(define-read-only (get-artwork-likes-count (art-id uint))
+    ;; Returns the number of likes for an artwork
+    (ok (len (default-to (list) (map-get? artwork-likes art-id)))))
+
+;; Function to get artwork report count
+(define-read-only (get-artwork-report-count (art-id uint))
+    ;; Returns the number of reports for an artwork
+    (ok (len (default-to (list) (map-get? artwork-reports art-id)))))
+
+(define-read-only (get-total-transferred-artworks)
+  ;; Retrieves the total number of transferred artworks
+  (ok (len (filter is-transferred (generate-art-list u0 (var-get latest-art-id))))))
+
+(define-read-only (get-art-ownership-status (art-id uint))
+;; Check ownership status
+(ok (unwrap! (nft-get-owner? art-token art-id) err-art-not-found))) 
+
+(define-read-only (check-art-ownership (art-id uint) (user principal))
+  ;; Checks if a specific user owns an artwork
+  (ok (is-eq (unwrap! (nft-get-owner? art-token art-id) err-art-not-found) user)))
 
 ;; Contract Initialization
 (begin
